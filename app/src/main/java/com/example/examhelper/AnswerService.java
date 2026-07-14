@@ -74,16 +74,30 @@ public class AnswerService extends AccessibilityService {
             // 启动轮询（只启动一次）
             if (!pollingStarted) {
                 pollingStarted = true;
-                pollingHandler = new Handler(getMainLooper());
-                pollingTask = () -> {
-                    takeScreenshotAndSend();
-                    pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS);
-                };
-                pollingHandler.postDelayed(pollingTask, 6000); // 延迟6秒启动
+                // 延迟多一点，等系统完全绑定
+                new Handler(getMainLooper()).postDelayed(new Runnable() {
+                    @Override
+                    public void run() {
+                        startPolling();
+                    }
+                }, 8000);
             }
         } catch (Exception e) {
             try { startForegroundService(); } catch (Exception ignored) {}
         }
+    }
+
+    private void startPolling() {
+        showToast("📷 开始轮询截屏");
+        pollingHandler = new Handler(getMainLooper());
+        pollingTask = new Runnable() {
+            @Override
+            public void run() {
+                takeScreenshotAndSend();
+                pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
+            }
+        };
+        pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS);
     }
 
     private void startForegroundService() {
