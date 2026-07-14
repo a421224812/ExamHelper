@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@android:drawable/alert_dark_frame"
+    android:padding="4dp">
+
+    <Button
+        android:id="@+id/btnFloatCapture"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:text="📷"
+        android:textSize="18sp"
+        android:background="@android:drawable/btn_default"
+        android:gravity="center" />
+
+</LinearLayout>

@@ -5,6 +5,16 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
+import android.graphics.PixelFormat;
+import android.os.Build;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.Toast;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
@@ -19,12 +29,13 @@ import android.os.Build;
 import android.os.Handler;
 import android.util.Base64;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.Toast;
+import android.widget.TextView;
 
 import androidx.core.app.NotificationCompat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -58,11 +69,96 @@ public class AnswerService extends AccessibilityService {
         } catch (Exception ignored) {}
     }
 
+    // 悬浮窗
+    private WindowManager windowManager;
+    private View floatView;
+    private WindowManager.LayoutParams floatParams;
+
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
-        // 只启动前台服务通知，不启动轮询
         startForegroundService();
+        createFloatButton();
+    }
+
+    private void createFloatButton() {
+        try {
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            int LAYOUT_FLAG;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                LAYOUT_FLAG = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+            } else {
+                LAYOUT_FLAG = WindowManager.LayoutParams.TYPE_PHONE;
+            }
+
+            floatParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    LAYOUT_FLAG,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    PixelFormat.TRANSLUCENT);
+            floatParams.gravity = Gravity.TOP | Gravity.START;
+            floatParams.x = 50;
+            floatParams.y = 300;
+
+            // 悬浮按钮布局
+            floatView = LayoutInflater.from(this).inflate(
+                    com.example.examhelper.R.layout.float_button, null);
+
+            Button btn = floatView.findViewById(com.example.examhelper.R.id.btnFloatCapture);
+            btn.setOnClickListener(v -> takeScreenshotAndSend());
+
+            // 拖拽
+            floatView.setOnTouchListener(new View.OnTouchListener() {
+                private int initialX, initialY;
+                private float touchX, touchY;
+                private boolean isDragging = false;
+                private long touchTime;
+
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                            initialX = floatParams.x;
+                            initialY = floatParams.y;
+                            touchX = event.getRawX();
+                            touchY = event.getRawY();
+                            touchTime = System.currentTimeMillis();
+                            isDragging = false;
+                            return true;
+                        case MotionEvent.ACTION_MOVE:
+                            float dx = event.getRawX() - touchX;
+                            float dy = event.getRawY() - touchY;
+                            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                isDragging = true;
+                                floatParams.x = initialX + (int) dx;
+                                floatParams.y = initialY + (int) dy;
+                                windowManager.updateViewLayout(floatView, floatParams);
+                            }
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                            if (!isDragging && System.currentTimeMillis() - touchTime < 300) {
+                                btn.performClick();
+                            }
+                            return true;
+                    }
+                    return false;
+                }
+            });
+
+            windowManager.addView(floatView, floatParams);
+        } catch (Exception e) {
+            // 如果悬浮窗权限被拒绝，静默处理
+            showToast("⚠️ 悬浮窗未创建: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (floatView != null && windowManager != null) {
+            try { windowManager.removeView(floatView); } catch (Exception ignored) {}
+        }
+        super.onDestroy();
     }
 
     private void startForegroundService() {
