@@ -201,6 +201,6 @@ public class MainActivity extends AppCompatActivity {
 
     /** 由 AnswerService 调用，更新界面显示的题目 */
     public void onQuestionDetected(String question) {
-        runOnUiThread(() -> findViewById(R.id.tvLastQuestion).setVisibility(android.view.View.GONE));
+        // 界面已简化，此回调暂不更新UI
     }
 }
