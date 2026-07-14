@@ -41,9 +41,8 @@ public class AnswerService extends AccessibilityService {
     private static int sResultCode = 0;
     private static Intent sResultData;
 
-    // 轮询相关
+    // 轮询相关（无脑每3秒截屏一次）
     private Handler pollingHandler;
-    private boolean pollingRunning = false;
     private Runnable pollingTask;
     private static final long POLL_INTERVAL_MS = 3000;
 
@@ -55,51 +54,16 @@ public class AnswerService extends AccessibilityService {
         monitorPrefs.enableIfNot(TARGET_PACKAGE);
         mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
 
-        // 启动轮询
+        // 启动无脑轮询截屏
         pollingHandler = new Handler(getMainLooper());
         pollingTask = new Runnable() {
             @Override
             public void run() {
-                String topPackage = getTopPackageName();
-                if (topPackage != null && monitorPrefs.isMonitored(topPackage)) {
-                    long now = System.currentTimeMillis();
-                    if (now - lastEventTime >= DEBOUNCE_MS) {
-                        lastEventTime = now;
-                        // 延迟一下等待界面稳定
-                        pollingHandler.postDelayed(() -> takeScreenshotAndSend(), 500);
-                    }
-                }
-                // 继续下一轮
+                takeScreenshotAndSend();
                 pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
             }
         };
-        pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS);
-    }
-
-    private String getTopPackageName() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            try {
-                android.app.usage.UsageStatsManager usm = (android.app.usage.UsageStatsManager)
-                        getSystemService(USAGE_STATS_SERVICE);
-                long time = System.currentTimeMillis();
-                java.util.List<android.app.usage.UsageStats> stats = usm.queryUsageStats(
-                        android.app.usage.UsageStatsManager.INTERVAL_DAILY, time - 10000, time);
-                if (stats != null) {
-                    String topPackage = null;
-                    long lastUsed = 0;
-                    for (android.app.usage.UsageStats s : stats) {
-                        if (s.getLastTimeUsed() > lastUsed) {
-                            lastUsed = s.getLastTimeUsed();
-                            topPackage = s.getPackageName();
-                        }
-                    }
-                    return topPackage;
-                }
-            } catch (Exception e) {
-                // 如果没有 USAGE_STATS 权限，忽略
-            }
-        }
-        return null;
+        pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS * 2); // 延迟6秒启动，给系统准备时间
     }
 
     /** 由 MainActivity 在获取到录屏权限后调用 */
