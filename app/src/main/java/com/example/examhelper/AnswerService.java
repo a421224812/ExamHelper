@@ -51,6 +51,7 @@ public class AnswerService extends AccessibilityService {
 
     // 前台服务通知 ID
     private static final int NOTIFICATION_ID = 1001;
+    private boolean pollingStarted = false;
 
     @Override
     public void onCreate() {
@@ -60,22 +61,27 @@ public class AnswerService extends AccessibilityService {
             myPackageName = getPackageName();
             monitorPrefs.enableIfNot(TARGET_PACKAGE);
             mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+        } catch (Exception ignored) {}
+    }
 
-            // 启动前台服务（Android 14 需要）— 必须先于任何耗时操作
+    @Override
+    public void onServiceConnected() {
+        super.onServiceConnected();
+        try {
+            // 启动前台服务（Android 14 需要）
             startForegroundService();
 
-            // 启动无脑轮询截屏
-            pollingHandler = new Handler(getMainLooper());
-            pollingTask = new Runnable() {
-                @Override
-                public void run() {
+            // 启动轮询（只启动一次）
+            if (!pollingStarted) {
+                pollingStarted = true;
+                pollingHandler = new Handler(getMainLooper());
+                pollingTask = () -> {
                     takeScreenshotAndSend();
-                    pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
-                }
-            };
-            pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS * 2); // 延迟6秒启动，给系统准备时间
+                    pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS);
+                };
+                pollingHandler.postDelayed(pollingTask, 6000); // 延迟6秒启动
+            }
         } catch (Exception e) {
-            // 确保前台服务通知永远能显示
             try { startForegroundService(); } catch (Exception ignored) {}
         }
     }
