@@ -16,7 +16,7 @@ import java.util.Set;
 
 public class AnswerService extends AccessibilityService {
 
-    private static final String SERVER_URL = "http://172.17.90.64:8765"; // 小黑服务器
+    private static final String SERVER_URL = "http://120.78.231.177:8765"; // 小黑服务器公网
     private String lastText = "";
     private long lastEventTime = 0;
     private static final long DEBOUNCE_MS = 1500;
