@@ -38,7 +38,6 @@ public class MainActivity extends AppCompatActivity {
     private List<AppInfo> appList;
     private MonitorPrefs monitorPrefs;
     private String myPackageName;
-    private AnswerService answerService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,17 +89,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_MEDIA_PROJECTION && resultCode == RESULT_OK && data != null) {
-            // 把录屏权限传给 AnswerService
-            AnswerService service = getAnswerService();
-            if (service != null) {
-                service.setProjection(resultCode, data);
-            }
-            // 保存以便服务重启后使用
-            getSharedPreferences("exam_prefs", MODE_PRIVATE)
-                    .edit()
-                    .putInt("projection_result_code", resultCode)
-                    .putString("projection_data_action", data.getAction())
-                    .apply();
+            // 静态方式传给 AnswerService（无需拿到 Service 实例）
+            AnswerService.setProjection(resultCode, data);
             Toast.makeText(this, "✅ 截屏权限已获取", Toast.LENGTH_SHORT).show();
         }
     }
@@ -126,7 +116,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (isRunning) {
             int count = monitorPrefs.getMonitoredPackages().size();
-            String hint = hasProjectionPermission() ? "📷" : "⚠️ 未授权截屏";
+            String hint = "📷"; // 截屏权限由按钮管理
             tvStatus.setText("✅ 服务已启动 [" + hint + "] - 监听 " + count + " 个应用");
             tvStatus.setTextColor(0xFF2E7D32);
         } else {
@@ -135,35 +125,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private boolean hasProjectionPermission() {
-        return getSharedPreferences("exam_prefs", MODE_PRIVATE).contains("projection_result_code");
-    }
 
-    private AnswerService getAnswerService() {
-        if (answerService != null) return answerService;
-        // 尝试从已绑定的无障碍服务获取
-        android.accessibilityservice.AccessibilityServiceInfo info = null;
-        AccessibilityManager am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
-        List<AccessibilityServiceInfo> services = am.getEnabledAccessibilityServiceList(
-                AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
-        for (AccessibilityServiceInfo si : services) {
-            if (si.getResolveInfo().serviceInfo.packageName.equals(getPackageName())) {
-                // AnswerService 实例无法直接从 info 获取，用全局引用
-                break;
-            }
-        }
-        return null;
-    }
-
-    /** AnswerService 启动时调用此方法注册自身 */
-    public void registerAnswerService(AnswerService service) {
-        this.answerService = service;
-        // 恢复之前保存的投影权限
-        if (hasProjectionPermission()) {
-            int code = getSharedPreferences("exam_prefs", MODE_PRIVATE).getInt("projection_result_code", 0);
-            // data 无法序列化保存，需要重新请求
-        }
-    }
 
     private void loadInstalledApps() {
         appList.clear();

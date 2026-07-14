@@ -33,13 +33,13 @@ public class AnswerService extends AccessibilityService {
     private String myPackageName;
     private static final String TARGET_PACKAGE = "com.qny.qnex";
 
-    // 截屏相关
+    // 截屏相关（静态，Activity 和 Service 共享）
     private static final int SCREENSHOT_WIDTH = 720;
     private static final int SCREENSHOT_HEIGHT = 1280;
     private MediaProjectionManager mpManager;
     private MediaProjection mp;
-    private int resultCode;
-    private Intent resultData;
+    private static int sResultCode = 0;
+    private static Intent sResultData;
 
     @Override
     public void onCreate() {
@@ -51,9 +51,9 @@ public class AnswerService extends AccessibilityService {
     }
 
     /** 由 MainActivity 在获取到录屏权限后调用 */
-    public void setProjection(int code, Intent data) {
-        this.resultCode = code;
-        this.resultData = data;
+    public static void setProjection(int code, Intent data) {
+        sResultCode = code;
+        sResultData = data;
     }
 
     @Override
@@ -77,7 +77,7 @@ public class AnswerService extends AccessibilityService {
     }
 
     private void takeScreenshotAndSend() {
-        if (resultData == null) {
+        if (sResultData == null) {
             showToast("❌ 未获取截屏权限");
             return;
         }
@@ -97,7 +97,7 @@ public class AnswerService extends AccessibilityService {
                         SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT,
                         PixelFormat.RGBA_8888, 2);
 
-                mp = mpManager.getMediaProjection(resultCode, resultData);
+                mp = mpManager.getMediaProjection(sResultCode, sResultData);
                 VirtualDisplay vd = mp.createVirtualDisplay(
                         "examhelper_screenshot",
                         SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, density,
