@@ -41,6 +41,12 @@ public class AnswerService extends AccessibilityService {
     private static int sResultCode = 0;
     private static Intent sResultData;
 
+    // 轮询相关
+    private Handler pollingHandler;
+    private boolean pollingRunning = false;
+    private Runnable pollingTask;
+    private static final long POLL_INTERVAL_MS = 3000;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -48,6 +54,52 @@ public class AnswerService extends AccessibilityService {
         myPackageName = getPackageName();
         monitorPrefs.enableIfNot(TARGET_PACKAGE);
         mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+
+        // 启动轮询
+        pollingHandler = new Handler(getMainLooper());
+        pollingTask = new Runnable() {
+            @Override
+            public void run() {
+                String topPackage = getTopPackageName();
+                if (topPackage != null && monitorPrefs.isMonitored(topPackage)) {
+                    long now = System.currentTimeMillis();
+                    if (now - lastEventTime >= DEBOUNCE_MS) {
+                        lastEventTime = now;
+                        // 延迟一下等待界面稳定
+                        pollingHandler.postDelayed(() -> takeScreenshotAndSend(), 500);
+                    }
+                }
+                // 继续下一轮
+                pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
+            }
+        };
+        pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS);
+    }
+
+    private String getTopPackageName() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                android.app.usage.UsageStatsManager usm = (android.app.usage.UsageStatsManager)
+                        getSystemService(USAGE_STATS_SERVICE);
+                long time = System.currentTimeMillis();
+                java.util.List<android.app.usage.UsageStats> stats = usm.queryUsageStats(
+                        android.app.usage.UsageStatsManager.INTERVAL_DAILY, time - 10000, time);
+                if (stats != null) {
+                    String topPackage = null;
+                    long lastUsed = 0;
+                    for (android.app.usage.UsageStats s : stats) {
+                        if (s.getLastTimeUsed() > lastUsed) {
+                            lastUsed = s.getLastTimeUsed();
+                            topPackage = s.getPackageName();
+                        }
+                    }
+                    return topPackage;
+                }
+            } catch (Exception e) {
+                // 如果没有 USAGE_STATS 权限，忽略
+            }
+        }
+        return null;
     }
 
     /** 由 MainActivity 在获取到录屏权限后调用 */
@@ -58,22 +110,7 @@ public class AnswerService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        String eventPackage = event.getPackageName() != null ? event.getPackageName().toString() : "";
-        if (eventPackage.isEmpty() || eventPackage.equals(myPackageName)) return;
-        if (!monitorPrefs.isMonitored(eventPackage)) return;
-
-        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                && event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            return;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now - lastEventTime < DEBOUNCE_MS) return;
-        lastEventTime = now;
-
-        // 触发截屏 → 发到服务器 OCR
-        showToast("🔍 正在识别题目...");
-        takeScreenshotAndSend();
+        // 不再依赖无障碍事件，改用轮询
     }
 
     private void takeScreenshotAndSend() {
@@ -81,6 +118,7 @@ public class AnswerService extends AccessibilityService {
             showToast("❌ 未获取截屏权限");
             return;
         }
+        showToast("🔍 正在识别题目...");
 
         new Thread(() -> {
             try {
