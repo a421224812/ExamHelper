@@ -7,6 +7,7 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.widget.Toast;
 import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
