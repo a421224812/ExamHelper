@@ -120,7 +120,7 @@ public class AnswerService extends AccessibilityService {
                 conn.setReadTimeout(30000);
 
                 // 发送 JSON
-                String json = "{\"question\":" + jsonEscape(question) + "}";
+                String json = "{\"question\":\"" + jsonEscape(question) + "\"}";
                 OutputStream os = conn.getOutputStream();
                 os.write(json.getBytes(StandardCharsets.UTF_8));
                 os.flush();
