@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="考试助手"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="打开此 App 后开启无障碍服务即可使用"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginBottom="32dp"/>
+
+    <Button
+        android:id="@+id/btnOpenSettings"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="开启无障碍服务"
+        android:textAllCaps="false"/>
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="服务状态: 未启动"
+        android:textSize="14sp"
+        android:layout_marginTop="24dp"
+        android:padding="12dp"/>
+
+    <TextView
+        android:id="@+id/tvLastQuestion"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="等待识别题目..."
+        android:textSize="13sp"
+        android:layout_marginTop="16dp"
+        android:padding="12dp"
+        android:background="#F0F0F0"/>
+
+</LinearLayout>
