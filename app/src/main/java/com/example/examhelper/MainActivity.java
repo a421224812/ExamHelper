@@ -5,11 +5,17 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
 import android.widget.TextView;
@@ -135,13 +141,15 @@ public class MainActivity extends AppCompatActivity {
             String hint = AnswerService.hasProjection() ? "📷" : "⚠️";
             tvStatus.setText("✅ 服务已启动 [" + hint + "] - 监听 " + count + " 个应用");
             tvStatus.setTextColor(0xFF2E7D32);
-            // 按钮一直可点，内部判断权限
             btnCaptureNow.setEnabled(true);
+            // 无障碍服务已启动 → 显示悬浮按钮
+            showFloatButton();
         } else {
             tvStatus.setText("❌ 服务未启动");
             tvStatus.setTextColor(0xFFC62828);
-            // 按钮一直可点
             btnCaptureNow.setEnabled(true);
+            // 服务未启动 → 隐藏悬浮按钮
+            hideFloatButton();
         }
     }
 
@@ -181,8 +189,108 @@ public class MainActivity extends AppCompatActivity {
         adapter.notifyDataSetChanged();
     }
 
-    /** 由 AnswerService 调用，更新界面显示的题目 */
-    public void onQuestionDetected(String question) {
-        // 界面已简化，此回调暂不更新UI
+        // 悬浮窗相关
+    private WindowManager floatWindowManager;
+    private View floatView;
+    private WindowManager.LayoutParams floatParams;
+    private boolean floatViewAdded = false;
+
+    private void showFloatButton() {
+        try {
+            if (floatViewAdded) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && !android.provider.Settings.canDrawOverlays(this)) {
+                // 没悬浮窗权限
+                return;
+            }
+
+            floatWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            int LAYOUT_FLAG = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+
+            floatParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    LAYOUT_FLAG,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    PixelFormat.TRANSLUCENT);
+            floatParams.gravity = Gravity.TOP | Gravity.START;
+            floatParams.x = 50;
+            floatParams.y = 300;
+
+            floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
+            Button btn = floatView.findViewById(R.id.btnFloatCapture);
+            btn.setOnClickListener(v -> {
+                if (AnswerService.hasProjection()) {
+                    Intent intent = new Intent(this, AnswerService.class);
+                    intent.setAction("com.example.examhelper.CAPTURE_NOW");
+                    startService(intent);
+                    Toast.makeText(this, "📸 正在截屏识别...", Toast.LENGTH_SHORT).show();
+                } else {
+                    // 没授权则弹出授权请求
+                    MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+                    startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
+                }
+            });
+
+            // 拖拽
+            floatView.setOnTouchListener(new View.OnTouchListener() {
+                private int initialX, initialY;
+                private float touchX, touchY;
+                private boolean isDragging = false;
+                private long touchTime;
+
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                            initialX = floatParams.x;
+                            initialY = floatParams.y;
+                            touchX = event.getRawX();
+                            touchY = event.getRawY();
+                            touchTime = System.currentTimeMillis();
+                            isDragging = false;
+                            return true;
+                        case MotionEvent.ACTION_MOVE:
+                            float dx = event.getRawX() - touchX;
+                            float dy = event.getRawY() - touchY;
+                            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                isDragging = true;
+                                floatParams.x = initialX + (int) dx;
+                                floatParams.y = initialY + (int) dy;
+                                floatWindowManager.updateViewLayout(floatView, floatParams);
+                            }
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                            if (!isDragging && System.currentTimeMillis() - touchTime < 300) {
+                                btn.performClick();
+                            }
+                            return true;
+                    }
+                    return false;
+                }
+            });
+
+            floatWindowManager.addView(floatView, floatParams);
+            floatViewAdded = true;
+        } catch (Exception e) {
+            Toast.makeText(this, "悬浮窗创建失败: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void hideFloatButton() {
+        try {
+            if (floatView != null && floatViewAdded) {
+                floatWindowManager.removeView(floatView);
+                floatViewAdded = false;
+            }
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void onDestroy() {
+        hideFloatButton();
+        super.onDestroy();
     }
 }
