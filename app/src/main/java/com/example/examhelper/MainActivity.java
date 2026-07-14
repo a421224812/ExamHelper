@@ -78,7 +78,9 @@ public class MainActivity extends AppCompatActivity {
                 startService(intent);
                 Toast.makeText(this, "📸 正在截屏识别...", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(this, "⚠️ 请先授权截屏权限", Toast.LENGTH_SHORT).show();
+                // 没授权则自动弹出授权请求
+                MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+                startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
             }
         });
 
@@ -133,11 +135,13 @@ public class MainActivity extends AppCompatActivity {
             String hint = AnswerService.hasProjection() ? "📷" : "⚠️";
             tvStatus.setText("✅ 服务已启动 [" + hint + "] - 监听 " + count + " 个应用");
             tvStatus.setTextColor(0xFF2E7D32);
-            btnCaptureNow.setEnabled(AnswerService.hasProjection());
+            // 按钮一直可点，内部判断权限
+            btnCaptureNow.setEnabled(true);
         } else {
             tvStatus.setText("❌ 服务未启动");
             tvStatus.setTextColor(0xFFC62828);
-            btnCaptureNow.setEnabled(false);
+            // 按钮一直可点
+            btnCaptureNow.setEnabled(true);
         }
     }
 
