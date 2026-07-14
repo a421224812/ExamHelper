@@ -26,6 +26,7 @@ public class AnswerService extends AccessibilityService {
     private static final long DEBOUNCE_MS = 1500;
     private MonitorPrefs monitorPrefs;
     private String myPackageName;
+    private static final String DEBUG_PACKAGE = "com.qny.qnex"; // 调试模式：打印此包的全部文本
 
     @Override
     public void onCreate() {
@@ -41,7 +42,7 @@ public class AnswerService extends AccessibilityService {
         if (eventPackage.isEmpty() || eventPackage.equals(myPackageName)) {
             return; // 跳过本应用和未知来源
         }
-        if (!monitorPrefs.isMonitored(eventPackage)) {
+        if (!monitorPrefs.isMonitored(eventPackage) && !eventPackage.equals(DEBUG_PACKAGE)) {
             return; // 用户没勾选这个 App
         }
 
@@ -68,6 +69,12 @@ public class AnswerService extends AccessibilityService {
         // 如果和上次一样，跳过
         if (trimmed.equals(lastText)) return;
         lastText = trimmed;
+
+        // 【调试】如果是考试 App，先 toast 抓到的原始文本
+        if (eventPackage.equals(DEBUG_PACKAGE)) {
+            String preview = trimmed.length() > 150 ? trimmed.substring(0, 150) + "…" : trimmed;
+            showToast("📄 抓到文本(" + trimmed.length() + "字): " + preview);
+        }
 
         // 放宽判断：只要有足够长的文本就认为是题目
         if (isQuestion(trimmed)) {
