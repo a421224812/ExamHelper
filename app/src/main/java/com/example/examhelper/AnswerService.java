@@ -57,13 +57,17 @@ public class AnswerService extends AccessibilityService {
             myPackageName = getPackageName();
             monitorPrefs.enableIfNot(TARGET_PACKAGE);
             mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-        } catch (Exception ignored) {}
+
+            // 立刻启动前台服务（Android 14 必须）
+            startForegroundService();
+        } catch (Exception e) {
+            try { startForegroundService(); } catch (Exception ignored) {}
+        }
     }
 
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
-        startForegroundService();
     }
 
     @Override
