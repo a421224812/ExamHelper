@@ -1,54 +1,67 @@
 package com.example.examhelper;
 
 import android.accessibilityservice.AccessibilityService;
-import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.PixelFormat;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.media.Image;
+import android.media.ImageReader;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
+import android.util.Base64;
 import android.view.accessibility.AccessibilityEvent;
-import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.HashSet;
 import java.util.Scanner;
-import java.util.Set;
 
 public class AnswerService extends AccessibilityService {
 
     private static final String SERVER_URL = "http://120.78.231.177:8765"; // 小黑服务器公网
-    private String lastText = "";
     private long lastEventTime = 0;
-    private static final long DEBOUNCE_MS = 1500;
+    private static final long DEBOUNCE_MS = 2000;
     private MonitorPrefs monitorPrefs;
     private String myPackageName;
     private static final String TARGET_PACKAGE = "com.qny.qnex";
+
+    // 截屏相关
+    private static final int SCREENSHOT_WIDTH = 720;
+    private static final int SCREENSHOT_HEIGHT = 1280;
+    private MediaProjectionManager mpManager;
+    private MediaProjection mp;
+    private int resultCode;
+    private Intent resultData;
 
     @Override
     public void onCreate() {
         super.onCreate();
         monitorPrefs = new MonitorPrefs(this);
         myPackageName = getPackageName();
-        // 自动勾选目标考试 App
         monitorPrefs.enableIfNot(TARGET_PACKAGE);
+        mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+    }
+
+    /** 由 MainActivity 在获取到录屏权限后调用 */
+    public void setProjection(int code, Intent data) {
+        this.resultCode = code;
+        this.resultData = data;
     }
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // 包名过滤：只监听用户选中的 App
         String eventPackage = event.getPackageName() != null ? event.getPackageName().toString() : "";
-        if (eventPackage.isEmpty() || eventPackage.equals(myPackageName)) {
-            return; // 跳过本应用和未知来源
-        }
-        if (!monitorPrefs.isMonitored(eventPackage)) {
-            return; // 用户没勾选这个 App
-        }
+        if (eventPackage.isEmpty() || eventPackage.equals(myPackageName)) return;
+        if (!monitorPrefs.isMonitored(eventPackage)) return;
 
-        // 只处理内容变化事件，不要太频繁
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             return;
@@ -58,114 +71,118 @@ public class AnswerService extends AccessibilityService {
         if (now - lastEventTime < DEBOUNCE_MS) return;
         lastEventTime = now;
 
-        AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
-
-        // 提取屏幕上所有文本
-        String screenText = extractText(root);
-        root.recycle();
-
-        if (screenText == null || screenText.trim().isEmpty()) return;
-        String trimmed = screenText.trim();
-
-        // 如果和上次一样，跳过
-        if (trimmed.equals(lastText)) return;
-        lastText = trimmed;
-
-        // 【调试】如果是考试 App，先 toast 抓到的原始文本
-        if (eventPackage.equals(DEBUG_PACKAGE)) {
-            String preview = trimmed.length() > 150 ? trimmed.substring(0, 150) + "…" : trimmed;
-            showToast("📄 抓到文本(" + trimmed.length() + "字): " + preview);
-        }
-
-        // 放宽判断：只要有足够长的文本就认为是题目
-        if (isQuestion(trimmed)) {
-            showToast("🔍 正在查询答案...");
-            fetchAnswer(trimmed);
-        }
+        // 触发截屏 → 发到服务器 OCR
+        showToast("🔍 正在识别题目...");
+        takeScreenshotAndSend();
     }
 
-    private boolean isQuestion(String text) {
-        // 放宽规则：文本长度超过 10 个字就可能是一道题
-        if (text.length() < 10) return false;
-
-        return text.contains("?") || text.contains("？")
-                || text.contains("A.") || text.contains("A．")
-                || text.contains("B.") || text.contains("B．")
-                || text.contains("C.") || text.contains("C．")
-                || text.contains("D.") || text.contains("D．")
-                || text.contains("题")
-                || text.matches(".*\\d+[.、].*")
-                || text.contains("正确") || text.contains("错误")
-                || text.contains("单选") || text.contains("多选");
-    }
-
-    private String extractText(AccessibilityNodeInfo node) {
-        StringBuilder sb = new StringBuilder();
-        extractTextRecursive(node, sb, new HashSet<>());
-        return sb.toString();
-    }
-
-    private void extractTextRecursive(AccessibilityNodeInfo node, StringBuilder sb, Set<String> visited) {
-        if (node == null) return;
-
-        String id = Integer.toHexString(node.hashCode());
-        if (visited.contains(id)) return;
-        visited.add(id);
-
-        if (node.getText() != null) {
-            String text = node.getText().toString().trim();
-            if (!text.isEmpty()) {
-                sb.append(text).append("\n");
-            }
-        }
-        if (node.getContentDescription() != null) {
-            String desc = node.getContentDescription().toString().trim();
-            if (!desc.isEmpty()) {
-                sb.append(desc).append("\n");
-            }
+    private void takeScreenshotAndSend() {
+        if (resultData == null) {
+            showToast("❌ 未获取截屏权限");
+            return;
         }
 
-        for (int i = 0; i < node.getChildCount(); i++) {
-            extractTextRecursive(node.getChild(i), sb, visited);
-        }
-    }
-
-    private void fetchAnswer(final String question) {
         new Thread(() -> {
             try {
-                URL url = new URL(SERVER_URL + "/api/answer");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
-
-                String json = "{\"question\":\"" + jsonEscape(question) + "\"}";
-                OutputStream os = conn.getOutputStream();
-                os.write(json.getBytes(StandardCharsets.UTF_8));
-                os.flush();
-                os.close();
-
-                int code = conn.getResponseCode();
-                if (code == 200) {
-                    java.io.InputStream is = conn.getInputStream();
-                    Scanner s = new Scanner(is, "UTF-8").useDelimiter("\\A");
-                    String answer = s.hasNext() ? s.next().trim() : "";
-                    is.close();
-
-                    if (!answer.isEmpty()) {
-                        showToast("💡 " + answer);
-                    }
-                } else {
-                    showToast("❌ 服务器返回: " + code);
+                // 释放旧投影
+                if (mp != null) {
+                    mp.stop();
+                    mp = null;
                 }
-                conn.disconnect();
+
+                int density = getResources().getDisplayMetrics().densityDpi;
+
+                // 创建 ImageReader，格式 JPEG 以节省带宽
+                ImageReader reader = ImageReader.newInstance(
+                        SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT,
+                        PixelFormat.RGBA_8888, 2);
+
+                mp = mpManager.getMediaProjection(resultCode, resultData);
+                VirtualDisplay vd = mp.createVirtualDisplay(
+                        "examhelper_screenshot",
+                        SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, density,
+                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                        reader.getSurface(), null, null);
+
+                // 等待一帧
+                Thread.sleep(500);
+
+                Image image = reader.acquireLatestImage();
+                if (image != null) {
+                    Bitmap bitmap = imageToBitmap(image);
+                    image.close();
+                    String base64 = bitmapToBase64(bitmap, 80);
+                    bitmap.recycle();
+                    sendScreenshotToServer(base64);
+                } else {
+                    showToast("❌ 截屏失败: 无法获取画面");
+                }
+
+                reader.close();
+                vd.release();
+                mp.stop();
+                mp = null;
+
             } catch (Exception e) {
-                showToast("❌ 连接失败: " + e.getMessage());
+                showToast("❌ 截屏失败: " + e.getMessage());
             }
         }).start();
+    }
+
+    private Bitmap imageToBitmap(Image image) {
+        Image.Plane[] planes = image.getPlanes();
+        ByteBuffer buffer = planes[0].getBuffer();
+        int pixelStride = planes[0].getPixelStride();
+        int rowStride = planes[0].getRowStride();
+        int rowPadding = rowStride - pixelStride * SCREENSHOT_WIDTH;
+
+        Bitmap bitmap = Bitmap.createBitmap(
+                SCREENSHOT_WIDTH + rowPadding / pixelStride,
+                SCREENSHOT_HEIGHT, Bitmap.Config.ARGB_8888);
+        bitmap.copyPixelsFromBuffer(buffer);
+        // 裁剪去掉填充
+        return Bitmap.createBitmap(bitmap, 0, 0, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
+    }
+
+    private String bitmapToBase64(Bitmap bitmap, int quality) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos);
+        byte[] bytes = baos.toByteArray();
+        return Base64.encodeToString(bytes, Base64.NO_WRAP);
+    }
+
+    private void sendScreenshotToServer(String base64Image) {
+        try {
+            URL url = new URL(SERVER_URL + "/api/ocr");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+
+            String json = "{\"image\":\"" + base64Image + "\"}";
+            OutputStream os = conn.getOutputStream();
+            os.write(json.getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            int code = conn.getResponseCode();
+            if (code == 200) {
+                java.io.InputStream is = conn.getInputStream();
+                Scanner s = new Scanner(is, "UTF-8").useDelimiter("\\A");
+                String answer = s.hasNext() ? s.next().trim() : "";
+                is.close();
+                if (!answer.isEmpty()) {
+                    showToast("💡 " + answer);
+                }
+            } else {
+                showToast("❌ 服务器返回: " + code);
+            }
+            conn.disconnect();
+        } catch (Exception e) {
+            showToast("❌ 请求失败: " + e.getMessage());
+        }
     }
 
     private void showToast(final String msg) {
@@ -173,15 +190,8 @@ public class AnswerService extends AccessibilityService {
                 Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_LONG).show());
     }
 
-    private String jsonEscape(String s) {
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
     @Override
     public void onInterrupt() {
+        if (mp != null) mp.stop();
     }
 }
