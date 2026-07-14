@@ -122,6 +122,13 @@ public class AnswerService extends AccessibilityService {
                         PixelFormat.RGBA_8888, 2);
 
                 mp = mpManager.getMediaProjection(sResultCode, sResultData);
+                // Android 14+ 要求必须先注册 callback
+                mp.registerCallback(new MediaProjection.Callback() {
+                    @Override
+                    public void onStop() {
+                        // 投影停止时的处理
+                    }
+                }, null);
                 VirtualDisplay vd = mp.createVirtualDisplay(
                         "examhelper_screenshot",
                         SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, density,
