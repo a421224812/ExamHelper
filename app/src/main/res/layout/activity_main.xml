@@ -34,6 +34,14 @@
         android:text="② 授权截屏权限"
         android:textAllCaps="false"/>
 
+    <Button
+        android:id="@+id/btnCaptureNow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="③ 手动截屏识别"
+        android:textAllCaps="false"
+        android:enabled="false"/>
+
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="wrap_content"

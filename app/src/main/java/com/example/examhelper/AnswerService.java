@@ -1,6 +1,9 @@
 package com.example.examhelper;
 
 import android.accessibilityservice.AccessibilityService;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
@@ -10,6 +13,8 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.os.Build;
+import java.nio.ByteBuffer;
 import android.os.Build;
 import android.os.Handler;
 import android.util.Base64;
@@ -22,21 +27,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Scanner;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 public class AnswerService extends AccessibilityService {
 
-    private static final String SERVER_URL = "http://120.78.231.177:8765"; // 小黑服务器公网
-    private long lastEventTime = 0;
-    private static final long DEBOUNCE_MS = 2000;
     private MonitorPrefs monitorPrefs;
     private String myPackageName;
     private static final String TARGET_PACKAGE = "com.qny.qnex";
+    private static final String SERVER_URL = "http://120.78.231.177:8765";
 
-    // 截屏相关（静态，Activity 和 Service 共享）
+    // 截屏相关（静态共享）
     private static final int SCREENSHOT_WIDTH = 720;
     private static final int SCREENSHOT_HEIGHT = 1280;
     private MediaProjectionManager mpManager;
@@ -44,14 +45,7 @@ public class AnswerService extends AccessibilityService {
     private static int sResultCode = 0;
     private static Intent sResultData;
 
-    // 轮询相关（无脑每3秒截屏一次）
-    private Handler pollingHandler;
-    private Runnable pollingTask;
-    private static final long POLL_INTERVAL_MS = 3000;
-
-    // 前台服务通知 ID
     private static final int NOTIFICATION_ID = 1001;
-    private boolean pollingStarted = false;
 
     @Override
     public void onCreate() {
@@ -67,50 +61,21 @@ public class AnswerService extends AccessibilityService {
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
-        try {
-            // 启动前台服务（Android 14 需要）
-            startForegroundService();
-
-            // 启动轮询（只启动一次）
-            if (!pollingStarted) {
-                pollingStarted = true;
-                // 延迟多一点，等系统完全绑定
-                new Handler(getMainLooper()).postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        startPolling();
-                    }
-                }, 8000);
-            }
-        } catch (Exception e) {
-            try { startForegroundService(); } catch (Exception ignored) {}
-        }
-    }
-
-    private void startPolling() {
-        showToast("📷 开始轮询截屏");
-        pollingHandler = new Handler(getMainLooper());
-        pollingTask = new Runnable() {
-            @Override
-            public void run() {
-                takeScreenshotAndSend();
-                pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
-            }
-        };
-        pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS);
+        // 只启动前台服务通知，不启动轮询
+        startForegroundService();
     }
 
     private void startForegroundService() {
         String channelId = "exam_helper_channel";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                    channelId, "考试助手", android.app.NotificationManager.IMPORTANCE_LOW);
-            ((android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE))
+            NotificationChannel channel = new NotificationChannel(
+                    channelId, "考试助手", NotificationManager.IMPORTANCE_LOW);
+            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE))
                     .createNotificationChannel(channel);
         }
-        android.app.Notification notification = new NotificationCompat.Builder(this, channelId)
+        Notification notification = new NotificationCompat.Builder(this, channelId)
                 .setContentTitle("考试助手")
-                .setContentText("正在运行中...")
+                .setContentText("已就绪，请在考试界面点击悬浮按钮")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setOngoing(true)
                 .build();
@@ -123,14 +88,36 @@ public class AnswerService extends AccessibilityService {
         sResultData = data;
     }
 
+    /** 检查截屏权限是否已获取 */
+    public static boolean hasProjection() {
+        return sResultData != null;
+    }
+
+    /** 外部调用——手动触发一次截屏识别 */
+    public void triggerScreenshot() {
+        takeScreenshotAndSend();
+    }
+
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null && "com.example.examhelper.CAPTURE_NOW".equals(intent.getAction())) {
+            takeScreenshotAndSend();
+        }
+        return START_NOT_STICKY;
+    }
+
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // 不再依赖无障碍事件，改用轮询
+        // 不再使用
+    }
+
+    @Override
+    public void onInterrupt() {
     }
 
     private void takeScreenshotAndSend() {
         if (sResultData == null) {
-            showToast("❌ 未获取截屏权限");
+            showToast("❌ 未获取截屏权限，请在主页面授权");
             return;
         }
         showToast("🔍 正在识别题目...");
@@ -145,26 +132,22 @@ public class AnswerService extends AccessibilityService {
 
                 int density = getResources().getDisplayMetrics().densityDpi;
 
-                // 创建 ImageReader，格式 JPEG 以节省带宽
                 ImageReader reader = ImageReader.newInstance(
                         SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT,
                         PixelFormat.RGBA_8888, 2);
 
                 mp = mpManager.getMediaProjection(sResultCode, sResultData);
-                // Android 14+ 要求必须先注册 callback
                 mp.registerCallback(new MediaProjection.Callback() {
                     @Override
-                    public void onStop() {
-                        // 投影停止时的处理
-                    }
+                    public void onStop() {}
                 }, null);
+
                 VirtualDisplay vd = mp.createVirtualDisplay(
                         "examhelper_screenshot",
                         SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, density,
                         DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                         reader.getSurface(), null, null);
 
-                // 等待一帧
                 Thread.sleep(500);
 
                 Image image = reader.acquireLatestImage();
@@ -187,28 +170,6 @@ public class AnswerService extends AccessibilityService {
                 showToast("❌ 截屏失败: " + e.getMessage());
             }
         }).start();
-    }
-
-    private Bitmap imageToBitmap(Image image) {
-        Image.Plane[] planes = image.getPlanes();
-        ByteBuffer buffer = planes[0].getBuffer();
-        int pixelStride = planes[0].getPixelStride();
-        int rowStride = planes[0].getRowStride();
-        int rowPadding = rowStride - pixelStride * SCREENSHOT_WIDTH;
-
-        Bitmap bitmap = Bitmap.createBitmap(
-                SCREENSHOT_WIDTH + rowPadding / pixelStride,
-                SCREENSHOT_HEIGHT, Bitmap.Config.ARGB_8888);
-        bitmap.copyPixelsFromBuffer(buffer);
-        // 裁剪去掉填充
-        return Bitmap.createBitmap(bitmap, 0, 0, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
-    }
-
-    private String bitmapToBase64(Bitmap bitmap, int quality) {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos);
-        byte[] bytes = baos.toByteArray();
-        return Base64.encodeToString(bytes, Base64.NO_WRAP);
     }
 
     private void sendScreenshotToServer(String base64Image) {
@@ -250,8 +211,23 @@ public class AnswerService extends AccessibilityService {
                 Toast.makeText(getApplicationContext(), msg, Toast.LENGTH_LONG).show());
     }
 
-    @Override
-    public void onInterrupt() {
-        if (mp != null) mp.stop();
+    private Bitmap imageToBitmap(Image image) {
+        Image.Plane[] planes = image.getPlanes();
+        ByteBuffer buffer = planes[0].getBuffer();
+        int pixelStride = planes[0].getPixelStride();
+        int rowStride = planes[0].getRowStride();
+        int rowPadding = rowStride - pixelStride * SCREENSHOT_WIDTH;
+
+        Bitmap bitmap = Bitmap.createBitmap(
+                SCREENSHOT_WIDTH + rowPadding / pixelStride,
+                SCREENSHOT_HEIGHT, Bitmap.Config.ARGB_8888);
+        bitmap.copyPixelsFromBuffer(buffer);
+        return Bitmap.createBitmap(bitmap, 0, 0, SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT);
+    }
+
+    private String bitmapToBase64(Bitmap bitmap, int quality) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, baos);
+        return Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP);
     }
 }
