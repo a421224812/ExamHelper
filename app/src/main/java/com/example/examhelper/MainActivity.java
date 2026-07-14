@@ -30,6 +30,7 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView tvStatus;
     private Button btnGrantProjection;
+    private Button btnCaptureNow;
     private Button btnOpenSettings;
     private Button btnRefreshApps;
     private Button btnAddManual;
@@ -46,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
 
         tvStatus = findViewById(R.id.tvStatus);
         btnGrantProjection = findViewById(R.id.btnGrantProjection);
+        btnCaptureNow = findViewById(R.id.btnCaptureNow);
         btnOpenSettings = findViewById(R.id.btnOpenSettings);
         btnRefreshApps = findViewById(R.id.btnRefreshApps);
         btnAddManual = findViewById(R.id.btnAddManual);
@@ -67,6 +69,17 @@ public class MainActivity extends AppCompatActivity {
         btnGrantProjection.setOnClickListener(v -> {
             MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
             startActivityForResult(mpm.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION);
+        });
+
+        btnCaptureNow.setOnClickListener(v -> {
+            if (AnswerService.hasProjection()) {
+                Intent intent = new Intent(this, AnswerService.class);
+                intent.setAction("com.example.examhelper.CAPTURE_NOW");
+                startService(intent);
+                Toast.makeText(this, "📸 正在截屏识别...", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "⚠️ 请先授权截屏权限", Toast.LENGTH_SHORT).show();
+            }
         });
 
         btnRefreshApps.setOnClickListener(v -> loadInstalledApps());
@@ -92,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
             // 静态方式传给 AnswerService（无需拿到 Service 实例）
             AnswerService.setProjection(resultCode, data);
             Toast.makeText(this, "✅ 截屏权限已获取", Toast.LENGTH_SHORT).show();
+            btnCaptureNow.setEnabled(true);
         }
     }
 
@@ -116,12 +130,14 @@ public class MainActivity extends AppCompatActivity {
 
         if (isRunning) {
             int count = monitorPrefs.getMonitoredPackages().size();
-            String hint = "📷"; // 截屏权限由按钮管理
+            String hint = AnswerService.hasProjection() ? "📷" : "⚠️";
             tvStatus.setText("✅ 服务已启动 [" + hint + "] - 监听 " + count + " 个应用");
             tvStatus.setTextColor(0xFF2E7D32);
+            btnCaptureNow.setEnabled(AnswerService.hasProjection());
         } else {
             tvStatus.setText("❌ 服务未启动");
             tvStatus.setTextColor(0xFFC62828);
+            btnCaptureNow.setEnabled(false);
         }
     }
 
