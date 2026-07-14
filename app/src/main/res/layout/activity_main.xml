@@ -2,29 +2,27 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:gravity="center"
     android:orientation="vertical"
-    android:padding="24dp">
+    android:padding="16dp">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="考试助手"
-        android:textSize="28sp"
+        android:textSize="26sp"
         android:textStyle="bold"
-        android:layout_marginBottom="8dp"/>
+        android:layout_marginBottom="4dp"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="打开此 App 后开启无障碍服务即可使用"
-        android:textSize="14sp"
-        android:gravity="center"
-        android:layout_marginBottom="32dp"/>
+        android:text="开启无障碍服务后即可使用"
+        android:textSize="13sp"
+        android:layout_marginBottom="16dp"/>
 
     <Button
         android:id="@+id/btnOpenSettings"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="开启无障碍服务"
         android:textAllCaps="false"/>
@@ -34,9 +32,31 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="服务状态: 未启动"
+        android:textSize="13sp"
+        android:layout_marginTop="12dp"
+        android:padding="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="选择要监听的 App（勾选后自动保存）:"
         android:textSize="14sp"
-        android:layout_marginTop="24dp"
-        android:padding="12dp"/>
+        android:textStyle="bold"
+        android:layout_marginTop="16dp"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvApps"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"/>
+
+    <Button
+        android:id="@+id/btnRefreshApps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="刷新应用列表"
+        android:textAllCaps="false"/>
 
     <TextView
         android:id="@+id/tvLastQuestion"
@@ -44,8 +64,8 @@
         android:layout_height="wrap_content"
         android:text="等待识别题目..."
         android:textSize="13sp"
-        android:layout_marginTop="16dp"
-        android:padding="12dp"
+        android:layout_marginTop="8dp"
+        android:padding="8dp"
         android:background="#F0F0F0"/>
 
 </LinearLayout>
