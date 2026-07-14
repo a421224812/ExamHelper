@@ -7,6 +7,8 @@ import android.app.NotificationManager;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
+import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
@@ -16,7 +18,13 @@ import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.Handler;
 import android.util.Base64;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
@@ -48,9 +56,16 @@ public class AnswerService extends AccessibilityService {
 
     // 轮询
     private Handler pollHandler;
-    private static final long POLL_INTERVAL = 3000; // 3秒
+    private static final long POLL_INTERVAL = 3000;
     private boolean isTargetForeground = false;
     private String lastScreenshotResult = "";
+
+    // 悬浮按钮
+    private WindowManager wm;
+    private View floatView;
+    private WindowManager.LayoutParams floatParams;
+    private int initialX, initialY;
+    private float initialTouchX, initialTouchY;
 
     @Override
     public void onCreate() {
@@ -62,6 +77,7 @@ public class AnswerService extends AccessibilityService {
             mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
 
             startForegroundService();
+            showFloatingButton();
             startPolling();
         } catch (Exception e) {
             try { startForegroundService(); } catch (Exception ignored) {}
@@ -69,13 +85,9 @@ public class AnswerService extends AccessibilityService {
     }
 
     @Override
-    public void onServiceConnected() {
-        super.onServiceConnected();
-    }
-
-    @Override
     public void onDestroy() {
         stopPolling();
+        hideFloatingButton();
         super.onDestroy();
     }
 
@@ -88,12 +100,71 @@ public class AnswerService extends AccessibilityService {
                     .createNotificationChannel(channel);
         }
         Notification notification = new NotificationCompat.Builder(this, channelId)
-                .setContentTitle("考试助手")
-                .setContentText("已就绪，检测到考试题目自动识别")
+                .setContentTitle("考试助手 🖤")
+                .setContentText("悬浮按钮已显示，点击可手动截屏")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setOngoing(true)
                 .build();
         startForeground(NOTIFICATION_ID, notification);
+    }
+
+    // ===== 悬浮按钮 =====
+    private void showFloatingButton() {
+        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+        int layoutFlag;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
+        } else {
+            layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
+        }
+
+        floatParams = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.TRANSLUCENT
+        );
+        floatParams.gravity = Gravity.TOP | Gravity.START;
+        floatParams.x = 0;
+        floatParams.y = 200;
+
+        floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
+        ImageButton btnFloat = floatView.findViewById(R.id.btnFloatCapture);
+        btnFloat.setOnClickListener(v -> takeScreenshotAndSend());
+
+        floatView.setOnTouchListener((v, event) -> {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    initialX = floatParams.x;
+                    initialY = floatParams.y;
+                    initialTouchX = event.getRawX();
+                    initialTouchY = event.getRawY();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    floatParams.x = initialX + (int) (event.getRawX() - initialTouchX);
+                    floatParams.y = initialY + (int) (event.getRawY() - initialTouchY);
+                    wm.updateViewLayout(floatView, floatParams);
+                    return true;
+            }
+            return false;
+        });
+
+        try {
+            wm.addView(floatView, floatParams);
+        } catch (Exception e) {
+            showToast("❌ 悬浮窗权限未开启，请在设置中允许");
+        }
+    }
+
+    private void hideFloatingButton() {
+        if (floatView != null && wm != null) {
+            try {
+                wm.removeView(floatView);
+            } catch (Exception ignored) {}
+            floatView = null;
+        }
     }
 
     public static void setProjection(int code, Intent data) {
@@ -119,7 +190,6 @@ public class AnswerService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // 通过窗口变化判断目标 App 是否切换到前台
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             String pkg = event.getPackageName() != null ? event.getPackageName().toString() : "";
             isTargetForeground = pkg.contains(TARGET_PACKAGE) || pkg.contains("qny");
@@ -130,6 +200,7 @@ public class AnswerService extends AccessibilityService {
     public void onInterrupt() {
     }
 
+    // ===== 轮询 =====
     private void startPolling() {
         pollHandler = new Handler(getMainLooper());
         pollRunnable.run();
@@ -154,8 +225,10 @@ public class AnswerService extends AccessibilityService {
         }
     };
 
+    // ===== 截屏 =====
     private void takeScreenshotAndSend() {
         if (sResultData == null) {
+            showToast("❌ 未获取截屏权限，请在主页面授权");
             return;
         }
 
@@ -180,7 +253,6 @@ public class AnswerService extends AccessibilityService {
                         DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                         reader.getSurface(), null, null);
 
-                // 等一帧
                 Thread.sleep(500);
 
                 Image image = reader.acquireLatestImage();
@@ -190,7 +262,6 @@ public class AnswerService extends AccessibilityService {
                     String base64 = bitmapToBase64(bitmap, 80);
                     bitmap.recycle();
 
-                    // 去重：相同结果不重复发送
                     String hash = base64.length() > 100 ? base64.substring(0, 100) : base64;
                     if (!hash.equals(lastScreenshotResult)) {
                         lastScreenshotResult = hash;
@@ -204,7 +275,7 @@ public class AnswerService extends AccessibilityService {
                 mp = null;
 
             } catch (Exception e) {
-                // 轮询模式下静默错误
+                // 静默
             }
         }).start();
     }
@@ -237,7 +308,7 @@ public class AnswerService extends AccessibilityService {
             }
             conn.disconnect();
         } catch (Exception e) {
-            // 轮询模式下静默
+            // 静默
         }
     }
 
