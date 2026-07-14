@@ -16,10 +16,13 @@ import android.util.Base64;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.Toast;
 
+import androidx.core.app.NotificationCompat;
+
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Scanner;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
@@ -46,6 +49,9 @@ public class AnswerService extends AccessibilityService {
     private Runnable pollingTask;
     private static final long POLL_INTERVAL_MS = 3000;
 
+    // 前台服务通知 ID
+    private static final int NOTIFICATION_ID = 1001;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -63,6 +69,22 @@ public class AnswerService extends AccessibilityService {
                 pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
             }
         };
+        // 启动前台服务（Android 14 需要）
+        String channelId = "exam_helper_channel";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                    channelId, "考试助手", android.app.NotificationManager.IMPORTANCE_LOW);
+            ((android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE))
+                    .createNotificationChannel(channel);
+        }
+        android.app.Notification notification = new NotificationCompat.Builder(this, channelId)
+                .setContentTitle("考试助手")
+                .setContentText("正在运行中...")
+                .setSmallIcon(android.R.drawable.ic_menu_camera)
+                .setOngoing(true)
+                .build();
+        startForeground(NOTIFICATION_ID, notification);
+
         pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS * 2); // 延迟6秒启动，给系统准备时间
     }
 
