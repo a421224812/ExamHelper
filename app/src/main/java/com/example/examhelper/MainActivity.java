@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -26,6 +27,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvLastQuestion;
     private Button btnOpenSettings;
     private Button btnRefreshApps;
+    private Button btnAddManual;
+    private EditText etSearchPackage;
     private RecyclerView rvApps;
     private AppListAdapter adapter;
     private List<AppInfo> appList;
@@ -41,6 +44,8 @@ public class MainActivity extends AppCompatActivity {
         tvLastQuestion = findViewById(R.id.tvLastQuestion);
         btnOpenSettings = findViewById(R.id.btnOpenSettings);
         btnRefreshApps = findViewById(R.id.btnRefreshApps);
+        btnAddManual = findViewById(R.id.btnAddManual);
+        etSearchPackage = findViewById(R.id.etSearchPackage);
         rvApps = findViewById(R.id.rvApps);
 
         monitorPrefs = new MonitorPrefs(this);
@@ -57,6 +62,38 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnRefreshApps.setOnClickListener(v -> loadInstalledApps());
+
+        btnAddManual.setOnClickListener(v -> {
+            String pkg = etSearchPackage.getText().toString().trim();
+            if (pkg.isEmpty()) {
+                pkg = "com.qny.qnex";
+            }
+            // 直接存入偏好设置，勾选上
+            getSharedPreferences("monitor_prefs", MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("monitor_" + pkg, true)
+                    .apply();
+            // 刷新列表并滚动到该项
+            loadInstalledApps();
+            String finalPkg = pkg;
+            for (int i = 0; i < appList.size(); i++) {
+                if (appList.get(i).packageName.equals(finalPkg)) {
+                    rvApps.scrollToPosition(i);
+                    break;
+                }
+            }
+            tvStatus.setText("✅ 已添加: " + pkg);
+            tvStatus.setTextColor(0xFF2E7D32);
+        });
+
+        // 搜索过滤
+        etSearchPackage.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                filterApps(s.toString());
+            }
+        });
 
         loadInstalledApps();
     }
@@ -95,13 +132,14 @@ public class MainActivity extends AppCompatActivity {
         appList.clear();
 
         PackageManager pm = getPackageManager();
-        // 获取所有已安装的应用（包括没有桌面包图标的）
-        List<android.content.pm.ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.MATCH_ALL);
+        List<android.content.pm.ApplicationInfo> packages = pm.getInstalledApplications(0);
+        java.util.Set<String> foundPkgs = new java.util.HashSet<>();
 
         for (android.content.pm.ApplicationInfo ai : packages) {
             String packageName = ai.packageName;
-            // 跳过系统核心应用（Android 系统本身）
-            if (packageName.startsWith("android.") || packageName.equals("com.android.shell")
+            foundPkgs.add(packageName);
+            if (packageName.startsWith("android.") || packageName.startsWith("com.android.")
+                    || packageName.equals("com.android.shell")
                     || packageName.equals(myPackageName)) {
                 continue;
             }
@@ -112,9 +150,31 @@ public class MainActivity extends AppCompatActivity {
             appList.add(info);
         }
 
-        // 按 App 名称排序
+        // 添加已勾选但列表里没出现的 App（比如被系统过滤掉的）
+        for (String monitoredPkg : monitorPrefs.getMonitoredPackages()) {
+            if (!foundPkgs.contains(monitoredPkg)) {
+                AppInfo info = new AppInfo(monitoredPkg, monitoredPkg, null);
+                info.checked = true;
+                appList.add(info);
+                foundPkgs.add(monitoredPkg);
+            }
+        }
+
         Collections.sort(appList, (a, b) -> a.appName.compareToIgnoreCase(b.appName));
         adapter.notifyDataSetChanged();
+    }
+
+    private void filterApps(String query) {
+        if (query.isEmpty()) {
+            // 显示完整列表
+            for (AppInfo app : appList) {
+                app.checked = monitorPrefs.isMonitored(app.packageName);
+            }
+            adapter.notifyDataSetChanged();
+            return;
+        }
+        // 搜索过滤逻辑由 adapter 处理或直接外部过滤
+        // 简单实现：只是用于提示用户点击"手动添加"按钮
     }
 
     /** 由 AnswerService 调用，更新界面显示的题目 */

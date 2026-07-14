@@ -26,13 +26,15 @@ public class AnswerService extends AccessibilityService {
     private static final long DEBOUNCE_MS = 1500;
     private MonitorPrefs monitorPrefs;
     private String myPackageName;
-    private static final String DEBUG_PACKAGE = "com.qny.qnex"; // 调试模式：打印此包的全部文本
+    private static final String TARGET_PACKAGE = "com.qny.qnex";
 
     @Override
     public void onCreate() {
         super.onCreate();
         monitorPrefs = new MonitorPrefs(this);
         myPackageName = getPackageName();
+        // 自动勾选目标考试 App
+        monitorPrefs.enableIfNot(TARGET_PACKAGE);
     }
 
     @Override
@@ -42,7 +44,7 @@ public class AnswerService extends AccessibilityService {
         if (eventPackage.isEmpty() || eventPackage.equals(myPackageName)) {
             return; // 跳过本应用和未知来源
         }
-        if (!monitorPrefs.isMonitored(eventPackage) && !eventPackage.equals(DEBUG_PACKAGE)) {
+        if (!monitorPrefs.isMonitored(eventPackage)) {
             return; // 用户没勾选这个 App
         }
 

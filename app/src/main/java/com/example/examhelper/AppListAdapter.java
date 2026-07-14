@@ -33,6 +33,10 @@ public class AppListAdapter extends RecyclerView.Adapter<AppListAdapter.ViewHold
         holder.tvPackageName.setText(app.packageName);
         if (app.icon != null) {
             holder.ivIcon.setImageDrawable(app.icon);
+            holder.ivIcon.setVisibility(View.VISIBLE);
+        } else {
+            holder.ivIcon.setImageResource(android.R.drawable.ic_menu_help);
+            holder.ivIcon.setVisibility(View.VISIBLE);
         }
 
         // 恢复已保存的选中状态

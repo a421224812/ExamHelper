@@ -32,4 +32,11 @@ public class MonitorPrefs {
     public boolean isMonitored(String packageName) {
         return prefs.getBoolean("monitor_" + packageName, false);
     }
+
+    /** 如果尚未勾选则自动勾选 */
+    public void enableIfNot(String packageName) {
+        if (!isMonitored(packageName)) {
+            prefs.edit().putBoolean("monitor_" + packageName, true).apply();
+        }
+    }
 }
