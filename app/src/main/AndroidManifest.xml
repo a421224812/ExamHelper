@@ -7,7 +7,8 @@
         android:allowBackup="true"
         android:label="考试助手"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ExamHelper">
+        android:theme="@style/Theme.ExamHelper"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
