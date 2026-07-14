@@ -55,21 +55,32 @@ public class AnswerService extends AccessibilityService {
     @Override
     public void onCreate() {
         super.onCreate();
-        monitorPrefs = new MonitorPrefs(this);
-        myPackageName = getPackageName();
-        monitorPrefs.enableIfNot(TARGET_PACKAGE);
-        mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+        try {
+            monitorPrefs = new MonitorPrefs(this);
+            myPackageName = getPackageName();
+            monitorPrefs.enableIfNot(TARGET_PACKAGE);
+            mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
 
-        // 启动无脑轮询截屏
-        pollingHandler = new Handler(getMainLooper());
-        pollingTask = new Runnable() {
-            @Override
-            public void run() {
-                takeScreenshotAndSend();
-                pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
-            }
-        };
-        // 启动前台服务（Android 14 需要）
+            // 启动前台服务（Android 14 需要）— 必须先于任何耗时操作
+            startForegroundService();
+
+            // 启动无脑轮询截屏
+            pollingHandler = new Handler(getMainLooper());
+            pollingTask = new Runnable() {
+                @Override
+                public void run() {
+                    takeScreenshotAndSend();
+                    pollingHandler.postDelayed(this, POLL_INTERVAL_MS);
+                }
+            };
+            pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS * 2); // 延迟6秒启动，给系统准备时间
+        } catch (Exception e) {
+            // 确保前台服务通知永远能显示
+            try { startForegroundService(); } catch (Exception ignored) {}
+        }
+    }
+
+    private void startForegroundService() {
         String channelId = "exam_helper_channel";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             android.app.NotificationChannel channel = new android.app.NotificationChannel(
@@ -84,8 +95,6 @@ public class AnswerService extends AccessibilityService {
                 .setOngoing(true)
                 .build();
         startForeground(NOTIFICATION_ID, notification);
-
-        pollingHandler.postDelayed(pollingTask, POLL_INTERVAL_MS * 2); // 延迟6秒启动，给系统准备时间
     }
 
     /** 由 MainActivity 在获取到录屏权限后调用 */
