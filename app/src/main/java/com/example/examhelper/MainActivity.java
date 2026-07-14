@@ -30,6 +30,7 @@ public class MainActivity extends AppCompatActivity {
     private AppListAdapter adapter;
     private List<AppInfo> appList;
     private MonitorPrefs monitorPrefs;
+    private String myPackageName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,6 +44,7 @@ public class MainActivity extends AppCompatActivity {
         rvApps = findViewById(R.id.rvApps);
 
         monitorPrefs = new MonitorPrefs(this);
+        myPackageName = getPackageName();
         appList = new ArrayList<>();
         adapter = new AppListAdapter(appList, getSharedPreferences("monitor_prefs", MODE_PRIVATE));
 
@@ -93,16 +95,19 @@ public class MainActivity extends AppCompatActivity {
         appList.clear();
 
         PackageManager pm = getPackageManager();
-        Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
-        mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
-        List<ResolveInfo> activities = pm.queryIntentActivities(mainIntent, 0);
+        // 获取所有已安装的应用（包括没有桌面包图标的）
+        List<android.content.pm.ApplicationInfo> packages = pm.getInstalledApplications(PackageManager.MATCH_ALL);
 
-        for (ResolveInfo ri : activities) {
-            String packageName = ri.activityInfo.packageName;
-            String appName = ri.loadLabel(pm).toString();
-            Drawable icon = ri.loadIcon(pm);
+        for (android.content.pm.ApplicationInfo ai : packages) {
+            String packageName = ai.packageName;
+            // 跳过系统核心应用（Android 系统本身）
+            if (packageName.startsWith("android.") || packageName.equals("com.android.shell")
+                    || packageName.equals(myPackageName)) {
+                continue;
+            }
+            String appName = pm.getApplicationLabel(ai).toString();
+            Drawable icon = ai.loadIcon(pm);
             AppInfo info = new AppInfo(packageName, appName, icon);
-            // 恢复已保存的选中状态
             info.checked = monitorPrefs.isMonitored(packageName);
             appList.add(info);
         }
