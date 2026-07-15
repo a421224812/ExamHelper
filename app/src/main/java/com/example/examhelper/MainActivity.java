@@ -244,13 +244,11 @@ public class MainActivity extends AppCompatActivity {
             floatParams.y = 300;
 
             floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
-            final ImageButton btn = floatView.findViewById(R.id.btnFloatCapture);
 
-            // 拖拽 + 点击
+            // 直接在整个悬浮视图上处理点击和拖拽
             floatView.setOnTouchListener(new View.OnTouchListener() {
                 private int initialX, initialY;
                 private float initialTouchX, initialTouchY;
-                private long touchTime;
                 private boolean isDragging;
 
                 @Override
@@ -261,13 +259,12 @@ public class MainActivity extends AppCompatActivity {
                             initialY = floatParams.y;
                             initialTouchX = event.getRawX();
                             initialTouchY = event.getRawY();
-                            touchTime = System.currentTimeMillis();
                             isDragging = false;
                             return true;
                         case MotionEvent.ACTION_MOVE:
                             float dx = event.getRawX() - initialTouchX;
                             float dy = event.getRawY() - initialTouchY;
-                            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
                                 isDragging = true;
                                 floatParams.x = (int) (initialX + dx);
                                 floatParams.y = (int) (initialY + dy);
@@ -275,16 +272,15 @@ public class MainActivity extends AppCompatActivity {
                             }
                             return true;
                         case MotionEvent.ACTION_UP:
-                            if (!isDragging && System.currentTimeMillis() - touchTime < 300) {
-                                btn.performClick();
+                            if (!isDragging) {
+                                // 短点击 → 直接调截屏
+                                takeScreenshot();
                             }
                             return true;
                     }
                     return false;
                 }
             });
-
-            btn.setOnClickListener(v -> takeScreenshot());
 
             wm.addView(floatView, floatParams);
             floatAdded = true;
