@@ -244,30 +244,47 @@ public class MainActivity extends AppCompatActivity {
             floatParams.y = 300;
 
             floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
-            ImageButton btn = floatView.findViewById(R.id.btnFloatCapture);
-            btn.setOnClickListener(v -> takeScreenshot());
+            final ImageButton btn = floatView.findViewById(R.id.btnFloatCapture);
 
-            // 拖拽
+            // 拖拽 + 点击
             floatView.setOnTouchListener(new View.OnTouchListener() {
-                private int lastX, lastY;
+                private int initialX, initialY;
+                private float initialTouchX, initialTouchY;
+                private long touchTime;
+                private boolean isDragging;
+
                 @Override
                 public boolean onTouch(View v, MotionEvent event) {
                     switch (event.getAction()) {
                         case MotionEvent.ACTION_DOWN:
-                            lastX = (int) event.getRawX();
-                            lastY = (int) event.getRawY();
+                            initialX = floatParams.x;
+                            initialY = floatParams.y;
+                            initialTouchX = event.getRawX();
+                            initialTouchY = event.getRawY();
+                            touchTime = System.currentTimeMillis();
+                            isDragging = false;
                             return true;
                         case MotionEvent.ACTION_MOVE:
-                            floatParams.x += (int) event.getRawX() - lastX;
-                            floatParams.y += (int) event.getRawY() - lastY;
-                            lastX = (int) event.getRawX();
-                            lastY = (int) event.getRawY();
-                            wm.updateViewLayout(floatView, floatParams);
+                            float dx = event.getRawX() - initialTouchX;
+                            float dy = event.getRawY() - initialTouchY;
+                            if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+                                isDragging = true;
+                                floatParams.x = (int) (initialX + dx);
+                                floatParams.y = (int) (initialY + dy);
+                                wm.updateViewLayout(floatView, floatParams);
+                            }
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                            if (!isDragging && System.currentTimeMillis() - touchTime < 300) {
+                                btn.performClick();
+                            }
                             return true;
                     }
                     return false;
                 }
             });
+
+            btn.setOnClickListener(v -> takeScreenshot());
 
             wm.addView(floatView, floatParams);
             floatAdded = true;
