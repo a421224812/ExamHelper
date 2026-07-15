@@ -3,98 +3,59 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:gravity="center_horizontal"
+    android:padding="24dp">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="考试助手"
-        android:textSize="26sp"
+        android:text="考试助手 🖤"
+        android:textSize="28sp"
         android:textStyle="bold"
-        android:layout_marginBottom="4dp"/>
+        android:layout_marginTop="40dp"
+        android:layout_marginBottom="8dp"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="开启无障碍服务 + 授权截屏后自动识别题目"
-        android:textSize="13sp"
-        android:layout_marginBottom="16dp"/>
+        android:text="点击悬浮按钮 → 截屏 → 自动出答案"
+        android:textSize="14sp"
+        android:textColor="#666666"
+        android:layout_marginBottom="32dp"/>
 
     <Button
-        android:id="@+id/btnOpenSettings"
+        android:id="@+id/btnOpenOverlay"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="① 开启无障碍服务"
-        android:textAllCaps="false"/>
+        android:layout_height="56dp"
+        android:text="① 授权悬浮窗权限"
+        android:textAllCaps="false"
+        android:textSize="16sp"/>
 
     <Button
         android:id="@+id/btnGrantProjection"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
+        android:layout_marginTop="12dp"
         android:text="② 授权截屏权限"
-        android:textAllCaps="false"/>
-
-    <Button
-        android:id="@+id/btnCaptureNow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="③ 手动截屏识别"
         android:textAllCaps="false"
-        android:enabled="false"/>
+        android:textSize="16sp"/>
 
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="服务状态: 未启动"
-        android:textSize="13sp"
-        android:layout_marginTop="12dp"
+        android:textSize="14sp"
+        android:layout_marginTop="20dp"
         android:padding="8dp"/>
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="目标考试 App (自动监听):"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:layout_marginTop="16dp"/>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="com.qny.qnex"
-        android:textSize="13sp"
-        android:textColor="#666666"
-        android:layout_marginTop="4dp"/>
-
     <Button
-        android:id="@+id/btnAddManual"
+        android:id="@+id/btnStart"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="强制勾选 com.qny.qnex"
-        android:textAllCaps="false"/>
-
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="其他已安装 App (可选勾选):"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:layout_marginTop="16dp"/>
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvApps"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"/>
-
-    <Button
-        android:id="@+id/btnRefreshApps"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="刷新应用列表"
-        android:textAllCaps="false"/>
+        android:layout_height="56dp"
+        android:layout_marginTop="24dp"
+        android:text="🚀 启动悬浮按钮"
+        android:textAllCaps="false"
+        android:textSize="18sp"
+        android:enabled="false"/>
 
 </LinearLayout>
