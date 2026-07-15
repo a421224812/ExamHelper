@@ -5,10 +5,8 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Intent;
+import android.widget.Toast;
 import android.graphics.Bitmap;
-import android.graphics.PixelFormat;
-import android.graphics.PixelFormat;
-import android.graphics.Point;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
 import android.media.Image;
@@ -16,24 +14,20 @@ import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
+import java.nio.ByteBuffer;
+import android.os.Build;
 import android.os.Handler;
 import android.util.Base64;
-import android.view.Gravity;
-import android.view.LayoutInflater;
-import android.view.MotionEvent;
-import android.view.View;
-import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
@@ -54,19 +48,6 @@ public class AnswerService extends AccessibilityService {
 
     private static final int NOTIFICATION_ID = 1001;
 
-    // 轮询
-    private Handler pollHandler;
-    private static final long POLL_INTERVAL = 3000;
-    private boolean isTargetForeground = false;
-    private String lastScreenshotResult = "";
-
-    // 悬浮按钮
-    private WindowManager wm;
-    private View floatView;
-    private WindowManager.LayoutParams floatParams;
-    private int initialX, initialY;
-    private float initialTouchX, initialTouchY;
-
     @Override
     public void onCreate() {
         super.onCreate();
@@ -75,19 +56,17 @@ public class AnswerService extends AccessibilityService {
             myPackageName = getPackageName();
             monitorPrefs.enableIfNot(TARGET_PACKAGE);
             mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+        } catch (Exception ignored) {}
+    }
 
-            startForegroundService();
-            showFloatingButton();
-            startPolling();
-        } catch (Exception e) {
-            try { startForegroundService(); } catch (Exception ignored) {}
-        }
+    @Override
+    public void onServiceConnected() {
+        super.onServiceConnected();
+        startForegroundService();
     }
 
     @Override
     public void onDestroy() {
-        stopPolling();
-        hideFloatingButton();
         super.onDestroy();
     }
 
@@ -100,82 +79,26 @@ public class AnswerService extends AccessibilityService {
                     .createNotificationChannel(channel);
         }
         Notification notification = new NotificationCompat.Builder(this, channelId)
-                .setContentTitle("考试助手 🖤")
-                .setContentText("悬浮按钮已显示，点击可手动截屏")
+                .setContentTitle("考试助手")
+                .setContentText("已就绪，请在考试界面点击悬浮按钮")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
                 .setOngoing(true)
                 .build();
         startForeground(NOTIFICATION_ID, notification);
     }
 
-    // ===== 悬浮按钮 =====
-    private void showFloatingButton() {
-        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-
-        int layoutFlag;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            layoutFlag = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY;
-        } else {
-            layoutFlag = WindowManager.LayoutParams.TYPE_PHONE;
-        }
-
-        floatParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                layoutFlag,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT
-        );
-        floatParams.gravity = Gravity.TOP | Gravity.START;
-        floatParams.x = 0;
-        floatParams.y = 200;
-
-        floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
-        ImageButton btnFloat = floatView.findViewById(R.id.btnFloatCapture);
-        btnFloat.setOnClickListener(v -> takeScreenshotAndSend());
-
-        floatView.setOnTouchListener((v, event) -> {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    initialX = floatParams.x;
-                    initialY = floatParams.y;
-                    initialTouchX = event.getRawX();
-                    initialTouchY = event.getRawY();
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    floatParams.x = initialX + (int) (event.getRawX() - initialTouchX);
-                    floatParams.y = initialY + (int) (event.getRawY() - initialTouchY);
-                    wm.updateViewLayout(floatView, floatParams);
-                    return true;
-            }
-            return false;
-        });
-
-        try {
-            wm.addView(floatView, floatParams);
-        } catch (Exception e) {
-            showToast("❌ 悬浮窗权限未开启，请在设置中允许");
-        }
-    }
-
-    private void hideFloatingButton() {
-        if (floatView != null && wm != null) {
-            try {
-                wm.removeView(floatView);
-            } catch (Exception ignored) {}
-            floatView = null;
-        }
-    }
-
+    /** 由 MainActivity 在获取到录屏权限后调用 */
     public static void setProjection(int code, Intent data) {
         sResultCode = code;
         sResultData = data;
     }
 
+    /** 检查截屏权限是否已获取 */
     public static boolean hasProjection() {
         return sResultData != null;
     }
 
+    /** 外部调用——手动触发一次截屏识别 */
     public void triggerScreenshot() {
         takeScreenshotAndSend();
     }
@@ -190,50 +113,23 @@ public class AnswerService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            String pkg = event.getPackageName() != null ? event.getPackageName().toString() : "";
-            isTargetForeground = pkg.contains(TARGET_PACKAGE) || pkg.contains("qny");
-        }
+        // 不再使用
     }
 
     @Override
     public void onInterrupt() {
     }
 
-    // ===== 轮询 =====
-    private void startPolling() {
-        pollHandler = new Handler(getMainLooper());
-        pollRunnable.run();
-    }
-
-    private void stopPolling() {
-        if (pollHandler != null) {
-            pollHandler.removeCallbacksAndMessages(null);
-            pollHandler = null;
-        }
-    }
-
-    private final Runnable pollRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (isTargetForeground && sResultData != null) {
-                takeScreenshotAndSend();
-            }
-            if (pollHandler != null) {
-                pollHandler.postDelayed(this, POLL_INTERVAL);
-            }
-        }
-    };
-
-    // ===== 截屏 =====
     private void takeScreenshotAndSend() {
         if (sResultData == null) {
             showToast("❌ 未获取截屏权限，请在主页面授权");
             return;
         }
+        showToast("🔍 正在识别题目...");
 
         new Thread(() -> {
             try {
+                // 释放旧投影
                 if (mp != null) {
                     mp.stop();
                     mp = null;
@@ -246,6 +142,10 @@ public class AnswerService extends AccessibilityService {
                         PixelFormat.RGBA_8888, 2);
 
                 mp = mpManager.getMediaProjection(sResultCode, sResultData);
+                mp.registerCallback(new MediaProjection.Callback() {
+                    @Override
+                    public void onStop() {}
+                }, null);
 
                 VirtualDisplay vd = mp.createVirtualDisplay(
                         "examhelper_screenshot",
@@ -261,12 +161,9 @@ public class AnswerService extends AccessibilityService {
                     image.close();
                     String base64 = bitmapToBase64(bitmap, 80);
                     bitmap.recycle();
-
-                    String hash = base64.length() > 100 ? base64.substring(0, 100) : base64;
-                    if (!hash.equals(lastScreenshotResult)) {
-                        lastScreenshotResult = hash;
-                        sendScreenshotToServer(base64);
-                    }
+                    sendScreenshotToServer(base64);
+                } else {
+                    showToast("❌ 截屏失败: 无法获取画面");
                 }
 
                 reader.close();
@@ -275,7 +172,7 @@ public class AnswerService extends AccessibilityService {
                 mp = null;
 
             } catch (Exception e) {
-                // 静默
+                showToast("❌ 截屏失败: " + e.getMessage());
             }
         }).start();
     }
@@ -305,10 +202,12 @@ public class AnswerService extends AccessibilityService {
                 if (!answer.isEmpty()) {
                     showToast("💡 " + answer);
                 }
+            } else {
+                showToast("❌ 服务器返回: " + code);
             }
             conn.disconnect();
         } catch (Exception e) {
-            // 静默
+            showToast("❌ 请求失败: " + e.getMessage());
         }
     }
 

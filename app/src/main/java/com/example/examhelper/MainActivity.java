@@ -17,7 +17,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityManager;
-import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
@@ -104,16 +104,19 @@ public class MainActivity extends AppCompatActivity {
         });
 
         loadInstalledApps();
+
+        // 启动时直接检查悬浮窗权限并显示按钮
+        tryShowFloatButton();
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_MEDIA_PROJECTION && resultCode == RESULT_OK && data != null) {
-            // 静态方式传给 AnswerService（无需拿到 Service 实例）
             AnswerService.setProjection(resultCode, data);
             Toast.makeText(this, "✅ 截屏权限已获取", Toast.LENGTH_SHORT).show();
             btnCaptureNow.setEnabled(true);
+            tryShowFloatButton();
         }
     }
 
@@ -142,15 +145,13 @@ public class MainActivity extends AppCompatActivity {
             tvStatus.setText("✅ 服务已启动 [" + hint + "] - 监听 " + count + " 个应用");
             tvStatus.setTextColor(0xFF2E7D32);
             btnCaptureNow.setEnabled(true);
-            // 无障碍服务已启动 → 显示悬浮按钮
-            showFloatButton();
         } else {
             tvStatus.setText("❌ 服务未启动");
             tvStatus.setTextColor(0xFFC62828);
             btnCaptureNow.setEnabled(true);
-            // 服务未启动 → 隐藏悬浮按钮
-            hideFloatButton();
         }
+        // 不管无障碍服务状态，只要悬浮窗权限开了就显示按钮
+        tryShowFloatButton();
     }
 
 
@@ -189,20 +190,24 @@ public class MainActivity extends AppCompatActivity {
         adapter.notifyDataSetChanged();
     }
 
-        // 悬浮窗相关
+    // 悬浮窗相关
     private WindowManager floatWindowManager;
     private View floatView;
     private WindowManager.LayoutParams floatParams;
     private boolean floatViewAdded = false;
 
+    // 尝试显示悬浮按钮，自动跳过权限判断
+    private void tryShowFloatButton() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && !Settings.canDrawOverlays(this)) {
+            return; // 没权限就不显示
+        }
+        showFloatButton();
+    }
+
     private void showFloatButton() {
         try {
             if (floatViewAdded) return;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                    && !android.provider.Settings.canDrawOverlays(this)) {
-                // 没悬浮窗权限
-                return;
-            }
 
             floatWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
             int LAYOUT_FLAG = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
@@ -220,7 +225,7 @@ public class MainActivity extends AppCompatActivity {
             floatParams.y = 300;
 
             floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
-            Button btn = floatView.findViewById(R.id.btnFloatCapture);
+            ImageButton btn = floatView.findViewById(R.id.btnFloatCapture);
             btn.setOnClickListener(v -> {
                 if (AnswerService.hasProjection()) {
                     Intent intent = new Intent(this, AnswerService.class);
