@@ -18,8 +18,13 @@ import android.os.Build;
 import java.nio.ByteBuffer;
 import android.os.Handler;
 import android.util.Base64;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.Toast;
+import android.widget.ImageButton;
 
 import androidx.core.app.NotificationCompat;
 
@@ -48,6 +53,12 @@ public class AnswerService extends AccessibilityService {
 
     private static final int NOTIFICATION_ID = 1001;
 
+    // 悬浮按钮
+    private WindowManager wm;
+    private View floatView;
+    private WindowManager.LayoutParams floatParams;
+    private boolean floatAdded = false;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -63,10 +74,13 @@ public class AnswerService extends AccessibilityService {
     public void onServiceConnected() {
         super.onServiceConnected();
         startForegroundService();
+        // 无障碍服务连接后自动显示悬浮按钮
+        showFloatButton();
     }
 
     @Override
     public void onDestroy() {
+        hideFloatButton();
         super.onDestroy();
     }
 
@@ -98,6 +112,7 @@ public class AnswerService extends AccessibilityService {
         return sResultData != null;
     }
 
+    /** 外部调用——手动触发一次截屏识别 */
     /** 外部调用——手动触发一次截屏识别 */
     public void triggerScreenshot() {
         takeScreenshotAndSend();
@@ -208,6 +223,78 @@ public class AnswerService extends AccessibilityService {
             conn.disconnect();
         } catch (Exception e) {
             showToast("❌ 请求失败: " + e.getMessage());
+        }
+    }
+
+    // ===== 悬浮按钮 =====
+    private void showFloatButton() {
+        if (floatAdded) return;
+        try {
+            wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+            int flag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+
+            floatParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    flag,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                    PixelFormat.TRANSLUCENT);
+            floatParams.gravity = Gravity.TOP | Gravity.START;
+            floatParams.x = 50;
+            floatParams.y = 300;
+
+            floatView = LayoutInflater.from(this).inflate(R.layout.float_button, null);
+
+            // 点击 + 拖拽
+            floatView.setOnTouchListener(new View.OnTouchListener() {
+                private int initialX, initialY;
+                private float initialTouchX, initialTouchY;
+                private boolean isDragging;
+
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                            initialX = floatParams.x;
+                            initialY = floatParams.y;
+                            initialTouchX = event.getRawX();
+                            initialTouchY = event.getRawY();
+                            isDragging = false;
+                            return true;
+                        case MotionEvent.ACTION_MOVE:
+                            float dx = event.getRawX() - initialTouchX;
+                            float dy = event.getRawY() - initialTouchY;
+                            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                                isDragging = true;
+                                floatParams.x = (int) (initialX + dx);
+                                floatParams.y = (int) (initialY + dy);
+                                wm.updateViewLayout(floatView, floatParams);
+                            }
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                            if (!isDragging) {
+                                takeScreenshotAndSend();
+                            }
+                            return true;
+                    }
+                    return false;
+                }
+            });
+
+            wm.addView(floatView, floatParams);
+            floatAdded = true;
+        } catch (Exception e) {
+            showToast("悬浮按钮创建失败: " + e.getMessage());
+        }
+    }
+
+    private void hideFloatButton() {
+        if (floatView != null && floatAdded) {
+            try { wm.removeView(floatView); } catch (Exception ignored) {}
+            floatAdded = false;
         }
     }
 
