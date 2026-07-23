@@ -22,10 +22,10 @@ import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.ByteArrayOutputStream;
@@ -60,8 +60,6 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
 
-        TextView tvStatus = findViewById(R.id.tvStatus);
-
         findViewById(R.id.btnOpenOverlay).setOnClickListener(v -> {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -87,7 +85,6 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "🖤 悬浮按钮已显示", Toast.LENGTH_SHORT).show();
         });
 
-        // 更新状态
         updateStatus();
     }
 
@@ -177,9 +174,8 @@ public class MainActivity extends AppCompatActivity {
                         case MotionEvent.ACTION_UP:
                         case MotionEvent.ACTION_CANCEL:
                             if (!dragging) {
-                                // 点击
                                 new Handler(Looper.getMainLooper()).post(() ->
-                                    Toast.makeText(MainActivity.this, "📸 截图中...", Toast.LENGTH_SHORT).show());
+                                    Toast.makeText(MainActivity.this, "📸 识别中...", Toast.LENGTH_SHORT).show());
                                 takeScreenshot();
                             }
                             return true;
@@ -194,7 +190,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // ========== 截屏 ==========
+    // ========== 截屏 + 答题 ==========
 
     private void takeScreenshot() {
         if (mResultData == null) {
@@ -224,14 +220,14 @@ public class MainActivity extends AppCompatActivity {
                 String base64 = bitmapToBase64(bitmap, 80);
                 bitmap.recycle();
 
-                // 发送 OCR
-                URL url = new URL(SERVER_URL + "/api/ocr");
+                // 发送到 /api/answer（OCR + 知识库检索 + 推理 全自动）
+                URL url = new URL(SERVER_URL + "/api/answer");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 conn.setDoOutput(true);
                 conn.setConnectTimeout(15000);
-                conn.setReadTimeout(30000);
+                conn.setReadTimeout(60000); // 留足推理时间
 
                 String json = "{\"image\":\"" + base64 + "\"}";
                 OutputStream os = conn.getOutputStream();
@@ -245,11 +241,21 @@ public class MainActivity extends AppCompatActivity {
                     Scanner s = new Scanner(is, "UTF-8").useDelimiter("\\A");
                     String answer = s.hasNext() ? s.next().trim() : "";
                     is.close();
-                    if (!answer.isEmpty()) {
-                        showToast("💡 " + answer);
-                    } else {
-                        showToast("⚠️ 未识别到内容");
-                    }
+
+                    final String displayAnswer = answer.isEmpty() ? "⚠️ 未识别到内容" : answer;
+
+                    // 弹出对话框展示完整答案（适用于多题情况）
+                    new Handler(Looper.getMainLooper()).post(() -> {
+                        Toast.makeText(MainActivity.this, "💡 " + displayAnswer, Toast.LENGTH_LONG).show();
+                        // 超过5个字符的答案用对话框展示
+                        if (displayAnswer.length() > 5) {
+                            new AlertDialog.Builder(MainActivity.this)
+                                    .setTitle("答题结果")
+                                    .setMessage(displayAnswer)
+                                    .setPositiveButton("关闭", null)
+                                    .show();
+                        }
+                    });
                 } else {
                     showToast("❌ 服务器错误 " + code);
                 }
